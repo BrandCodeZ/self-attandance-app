@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Staff Attendance</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0f1419; --surface: #1a2332; --surface-hover: #243044; --border: #2d3a4f;
+      --text: #e8edf4; --text-muted: #8b9cb3; --accent: #3b82f6; --accent-hover: #2563eb;
+      --success: #22c55e; --success-bg: rgba(34,197,94,.12); --warning: #f59e0b;
+      --danger: #ef4444; --danger-bg: rgba(239,68,68,.12); --radius: 12px;
+      --shadow: 0 4px 24px rgba(0,0,0,.35);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif; line-height: 1.5; color: var(--text);
+      min-height: 100vh; background: radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59,130,246,.15), transparent), var(--bg);
+    }
+    .app { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+    button { font-family: inherit; cursor: pointer; border: none; border-radius: 8px; font-size: .875rem; font-weight: 600; transition: background .15s, transform .1s; }
+    button:active:not(:disabled) { transform: scale(.98); }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    input, select { font-family: inherit; font-size: .9375rem; padding: .625rem .875rem; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); width: 100%; }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    .header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--border); }
+    .header-brand { display: flex; align-items: center; gap: .75rem; }
+    .header-icon { width: 44px; height: 44px; background: linear-gradient(135deg, var(--accent), #6366f1); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; }
+    .header h1 { font-size: 1.5rem; font-weight: 700; }
+    .header-sub { font-size: .8125rem; color: var(--text-muted); }
+    .live-clock .time { font-size: 1.75rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .live-clock .date { font-size: .8125rem; color: var(--text-muted); text-align: right; }
+    .tabs { display: flex; gap: .5rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .tab { padding: .5rem 1rem; background: transparent; color: var(--text-muted); border: 1px solid transparent; border-radius: 8px; }
+    .tab:hover { color: var(--text); background: var(--surface); }
+    .tab.active { background: var(--surface); color: var(--text); border-color: var(--border); }
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .stat-card, .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.25rem; }
+    .card { margin-bottom: 1.5rem; box-shadow: var(--shadow); }
+    .stat-label { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); margin-bottom: .375rem; }
+    .stat-value { font-size: 2rem; font-weight: 700; }
+    .stat-value.success { color: var(--success); }
+    .stat-value.warning { color: var(--warning); }
+    .card-title { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+    .staff-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+    .staff-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; display: flex; flex-direction: column; gap: .75rem; }
+    .staff-card.in-office { border-color: var(--success); background: var(--success-bg); }
+    .staff-info h3 { font-size: 1rem; font-weight: 600; }
+    .staff-info .meta { font-size: .8125rem; color: var(--text-muted); }
+    .id-badge { display: inline-block; margin-top: .25rem; font-size: .75rem; padding: .125rem .5rem; background: var(--surface); border-radius: 4px; color: var(--text-muted); }
+    .status-badge { display: inline-flex; align-items: center; gap: .375rem; font-size: .75rem; font-weight: 600; padding: .25rem .625rem; border-radius: 999px; }
+    .status-badge.in { background: var(--success-bg); color: var(--success); }
+    .status-badge.out { background: var(--surface-hover); color: var(--text-muted); }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .staff-actions { display: flex; flex-direction: column; gap: .5rem; }
+    .staff-actions .late-btn { width: 100%; }
+    .card-hint { font-size: .8125rem; color: var(--text-muted); margin: -.5rem 0 1rem; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 1rem; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1.5rem; width: 100%; max-width: 420px; box-shadow: var(--shadow); }
+    .modal-title { font-size: 1.125rem; font-weight: 600; margin-bottom: .5rem; }
+    .modal-desc, .modal-note { font-size: .875rem; color: var(--text-muted); margin-bottom: 1rem; }
+    .modal-note { padding: .5rem .75rem; background: rgba(245,158,11,.12); border-radius: 8px; color: var(--warning); }
+    .settings-section { padding: 1rem 0; border-bottom: 1px solid var(--border); }
+    .settings-section:last-child { border-bottom: none; padding-bottom: 0; }
+    .settings-label { font-size: .9375rem; font-weight: 600; margin-bottom: .375rem; }
+    .settings-meta { font-size: .8125rem; color: var(--text-muted); margin-bottom: .75rem; }
+    .danger-zone .settings-label { color: var(--danger); }
+    .btn { padding: .5rem 1rem; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-success { background: var(--success); color: #fff; flex: 1; }
+    .btn-danger { background: var(--danger-bg); color: var(--danger); border: 1px solid rgba(239,68,68,.3); flex: 1; }
+    .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+    .btn-ghost:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); }
+    .btn-sm { padding: .375rem .75rem; font-size: .8125rem; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: .8125rem; font-weight: 500; color: var(--text-muted); margin-bottom: .375rem; }
+    .form-actions { display: flex; gap: .5rem; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+    th { text-align: left; padding: .75rem 1rem; font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+    td { padding: .875rem 1rem; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    .filters { display: flex; flex-wrap: wrap; gap: .75rem; margin-bottom: 1rem; align-items: flex-end; }
+    .filters .form-group { flex: 1; min-width: 160px; }
+    .empty-state { text-align: center; padding: 3rem 1.5rem; color: var(--text-muted); }
+    .empty-state .icon { font-size: 2.5rem; margin-bottom: .75rem; opacity: .5; }
+    .hidden { display: none !important; }
+    .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; padding: .875rem 1.25rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); font-size: .875rem; font-weight: 500; z-index: 1000; }
+    .toast.error { border-color: var(--danger); color: var(--danger); }
+    .toast.success { border-color: var(--success); color: var(--success); }
+    @media (max-width: 640px) { .app { padding: 1rem; } .header { flex-direction: column; align-items: flex-start; } .live-clock .date { text-align: left; } }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="header">
+      <div class="header-brand">
+        <div class="header-icon">⏱</div>
+        <div>
+          <h1>Staff Attendance</h1>
+          <p class="header-sub">Track check-in &amp; check-out times</p>
+        </div>
+      </div>
+      <div class="live-clock">
+        <div class="time" id="liveTime">--:--:--</div>
+        <div class="date" id="liveDate">Loading...</div>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs"></nav>
+    <main id="content"></main>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+  <div id="modalRoot"></div>
+
+  <script>
+    const STORAGE_KEY = 'staff-attendance-data';
+    let state = loadData();
+    let activeTab = 'dashboard';
+    let staffForm = { editing: null, visible: false, name: '', role: '', employeeId: '' };
+    let filters = { date: todayISO(), staff: 'all' };
+    let lateModal = null;
+
+    function loadData() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : { staff: [], records: [] };
+      } catch { return { staff: [], records: [] }; }
+    }
+    function saveData() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    function uid() { return crypto.randomUUID(); }
+    function todayISO() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+    function nowTimeInput() {
+      const d = new Date();
+      return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    }
+    function toISOFromLocal(dateStr, timeStr) {
+      const [y,m,d] = dateStr.split('-').map(Number);
+      const [h,min] = timeStr.split(':').map(Number);
+      return new Date(y, m-1, d, h, min, 0).toISOString();
+    }
+    function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'; }
+    function fmtDate(iso) { return iso ? new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—'; }
+    function fmtDuration(a, b) {
+      if (!a || !b) return '—';
+      const m = Math.floor((new Date(b) - new Date(a)) / 60000);
+      if (m < 0) return '—';
+      const h = Math.floor(m / 60), min = m % 60;
+      return h ? `${h}h ${min}m` : `${min}m`;
+    }
+    function getStaff(id) { return state.staff.find(s => s.id === id); }
+    function activeRecord(staffId) { return state.records.find(r => r.staffId === staffId && !r.checkOut); }
+    function todayRecords() { const t = todayISO(); return state.records.filter(r => r.checkIn.slice(0, 10) === t); }
+    function currentlyIn() { return state.records.filter(r => !r.checkOut); }
+
+    function showToast(msg, type = 'success') {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.className = `toast ${type}`;
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => el.classList.add('hidden'), 3000);
+    }
+
+    function checkIn(staffId, at) {
+      if (activeRecord(staffId)) return showToast('Already checked in', 'error');
+      const checkInTime = at || new Date().toISOString();
+      if (Number.isNaN(new Date(checkInTime).getTime())) return showToast('Invalid date or time', 'error');
+      state.records.unshift({ id: uid(), staffId, checkIn: checkInTime, checkOut: null });
+      saveData(); render();
+      showToast(`${getStaff(staffId).name} ${at ? 'late check-in recorded' : 'checked in'}`);
+    }
+    function checkOut(staffId, at) {
+      const r = activeRecord(staffId);
+      if (!r) return showToast('Not checked in', 'error');
+      const checkOutTime = at || new Date().toISOString();
+      if (Number.isNaN(new Date(checkOutTime).getTime())) return showToast('Invalid date or time', 'error');
+      if (new Date(checkOutTime) <= new Date(r.checkIn)) return showToast('Check-out must be after check-in', 'error');
+      r.checkOut = checkOutTime;
+      saveData(); render();
+      showToast(`${getStaff(staffId).name} ${at ? 'late check-out recorded' : 'checked out'}`);
+    }
+    function clearAllData() {
+      const msg = `Delete all ${state.staff.length} staff and ${state.records.length} attendance records? This cannot be undone.`;
+      if (!confirm(msg)) return;
+      if (!confirm('Are you sure? Export a CSV backup first if you need your data.')) return;
+      state = { staff: [], records: [] };
+      saveData(); render();
+      showToast('All data cleared');
+    }
+    function addStaff() {
+      if (!staffForm.name.trim()) return showToast('Name is required', 'error');
+      if (staffForm.editing) {
+        const s = getStaff(staffForm.editing);
+        Object.assign(s, { name: staffForm.name.trim(), role: staffForm.role.trim(), employeeId: staffForm.employeeId.trim() });
+        showToast('Staff updated');
+      } else {
+        state.staff.push({ id: uid(), name: staffForm.name.trim(), role: staffForm.role.trim(), employeeId: staffForm.employeeId.trim(), createdAt: new Date().toISOString() });
+        showToast('Staff added');
+      }
+      staffForm = { editing: null, visible: false, name: '', role: '', employeeId: '' };
+      saveData(); render();
+    }
+    function deleteStaff(id) {
+      const s = getStaff(id);
+      if (!confirm(`Remove ${s.name} from staff list?`)) return;
+      state.staff = state.staff.filter(x => x.id !== id);
+      saveData(); render();
+      showToast('Staff removed');
+    }
+    function localDateKey(iso) {
+      const d = new Date(iso);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    }
+    function aggregateForExport(records) {
+      const groups = new Map();
+      for (const r of records) {
+        const dateKey = localDateKey(r.checkIn);
+        const key = `${r.staffId}-${dateKey}`;
+        if (!groups.has(key)) groups.set(key, { staffId: r.staffId, dateKey, checkIns: [], checkOuts: [] });
+        const g = groups.get(key);
+        g.checkIns.push(new Date(r.checkIn).getTime());
+        if (r.checkOut) g.checkOuts.push(new Date(r.checkOut).getTime());
+      }
+      return Array.from(groups.values()).map(g => {
+        const firstCheckIn = new Date(Math.min(...g.checkIns)).toISOString();
+        const lastCheckOut = g.checkOuts.length ? new Date(Math.max(...g.checkOuts)).toISOString() : null;
+        const p = getStaff(g.staffId);
+        return { firstCheckIn, lastCheckOut, person: p };
+      }).sort((a, b) => {
+        const da = localDateKey(a.firstCheckIn), db = localDateKey(b.firstCheckIn);
+        if (da !== db) return db.localeCompare(da);
+        return (a.person?.name ?? '').localeCompare(b.person?.name ?? '');
+      });
+    }
+    function exportCSV() {
+      const rows = aggregateForExport(filteredRecords()).map(row => [
+        fmtDate(row.firstCheckIn),
+        row.person?.name ?? '',
+        row.person?.role ?? '',
+        row.person?.employeeId ?? '',
+        fmtTime(row.firstCheckIn),
+        fmtTime(row.lastCheckOut),
+        fmtDuration(row.firstCheckIn, row.lastCheckOut),
+      ]);
+      const csv = [['Date','Name','Role','Employee ID','First Check In','Last Check Out','Total Duration'], ...rows]
+        .map(row => row.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = `attendance-${filters.date || 'all'}.csv`;
+      a.click();
+    }
+    function filteredRecords() {
+      return state.records.filter(r => {
+        const d = !filters.date || r.checkIn.slice(0, 10) === filters.date;
+        const s = filters.staff === 'all' || r.staffId === filters.staff;
+        return d && s;
+      });
+    }
+
+    const TABS = [
+      { id: 'dashboard', label: 'Dashboard' },
+      { id: 'attendance', label: 'Check In/Out' },
+      { id: 'staff', label: 'Staff' },
+      { id: 'records', label: 'Records' },
+      { id: 'settings', label: 'Settings' },
+    ];
+
+    function renderTabs() {
+      document.getElementById('tabs').innerHTML = TABS.map(t =>
+        `<button class="tab ${activeTab === t.id ? 'active' : ''}" data-tab="${t.id}">${t.label}</button>`
+      ).join('');
+      document.getElementById('tabs').querySelectorAll('.tab').forEach(btn =>
+        btn.onclick = () => { activeTab = btn.dataset.tab; render(); }
+      );
+    }
+
+    function renderDashboard() {
+      const present = currentlyIn();
+      const today = todayRecords();
+      return `
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-label">Total Staff</div><div class="stat-value">${state.staff.length}</div></div>
+          <div class="stat-card"><div class="stat-label">Currently In</div><div class="stat-value success">${present.length}</div></div>
+          <div class="stat-card"><div class="stat-label">Checked Out Today</div><div class="stat-value">${today.filter(r => r.checkOut).length}</div></div>
+          <div class="stat-card"><div class="stat-label">Today's Entries</div><div class="stat-value warning">${today.length}</div></div>
+        </div>
+        ${present.length ? `<div class="card"><h2 class="card-title">Currently Checked In</h2><div class="staff-grid">${present.map(r => {
+          const p = getStaff(r.staffId); if (!p) return '';
+          return `<div class="staff-card in-office"><div class="staff-info"><h3>${esc(p.name)}</h3><p class="meta">${esc(p.role)}</p><span class="status-badge in"><span class="status-dot"></span>In since ${fmtTime(r.checkIn)}</span></div></div>`;
+        }).join('')}</div></div>` : ''}
+        ${!state.staff.length ? `<div class="card"><div class="empty-state"><div class="icon">👥</div><p>No staff yet. Go to the Staff tab to add your team.</p></div></div>` : ''}`;
+    }
+
+    function renderAttendance() {
+      if (!state.staff.length) return `<div class="card"><div class="empty-state"><div class="icon">📋</div><p>Add staff members first to record attendance.</p></div></div>`;
+      return `<div class="card"><h2 class="card-title">Quick Check-In / Check-Out</h2>
+        <p class="card-hint">Use <strong>Late Entry</strong> to pick a past date and time when recording attendance after the fact.</p>
+        <div class="staff-grid">${state.staff.map(p => {
+        const r = activeRecord(p.id), isIn = !!r;
+        return `<div class="staff-card ${isIn ? 'in-office' : ''}">
+          <div class="staff-info"><h3>${esc(p.name)}</h3><p class="meta">${esc(p.role)}</p><span class="id-badge">ID: ${esc(p.employeeId || '—')}</span></div>
+          <span class="status-badge ${isIn ? 'in' : 'out'}"><span class="status-dot"></span>${isIn ? 'In since ' + fmtTime(r.checkIn) : 'Not checked in'}</span>
+          <div class="staff-actions">${isIn
+            ? `<button class="btn btn-danger" data-out="${p.id}">Check Out</button><button class="btn btn-ghost btn-sm late-btn" data-late-out="${p.id}">Late Check Out</button>`
+            : `<button class="btn btn-success" data-in="${p.id}">Check In</button><button class="btn btn-ghost btn-sm late-btn" data-late-in="${p.id}">Late Entry</button>`}</div>
+        </div>`;
+      }).join('')}</div></div>`;
+    }
+
+    function renderStaff() {
+      const form = staffForm.visible ? `
+        <form id="staffForm">
+          <div class="form-grid">
+            <div class="form-group"><label>Full Name *</label><input name="name" value="${esc(staffForm.name)}" placeholder="John Smith" required /></div>
+            <div class="form-group"><label>Role / Department</label><input name="role" value="${esc(staffForm.role)}" placeholder="Sales, HR, etc." /></div>
+            <div class="form-group"><label>Employee ID</label><input name="employeeId" value="${esc(staffForm.employeeId)}" placeholder="EMP-001" /></div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">${staffForm.editing ? 'Save Changes' : 'Add Staff'}</button>
+            <button type="button" class="btn btn-ghost" id="cancelStaff">Cancel</button>
+          </div>
+        </form>` : '';
+
+      const list = state.staff.length ? `<div class="card"><div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Role</th><th>Employee ID</th><th>Actions</th></tr></thead>
+        <tbody>${state.staff.map(p => `<tr>
+          <td><strong>${esc(p.name)}</strong></td><td>${esc(p.role || '—')}</td><td>${esc(p.employeeId || '—')}</td>
+          <td><button class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button> <button class="btn btn-danger btn-sm" data-del="${p.id}">Remove</button></td>
+        </tr>`).join('')}</tbody></table></div></div>`
+        : `<div class="card"><div class="empty-state"><div class="icon">👤</div><p>No staff members yet.</p></div></div>`;
+
+      return `<div class="card"><h2 class="card-title">Staff Members ${!staffForm.visible ? '<button class="btn btn-primary btn-sm" id="showStaffForm">+ Add Staff</button>' : ''}</h2>${form}</div>${list}`;
+    }
+
+    function renderRecords() {
+      const recs = filteredRecords();
+      const table = recs.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Date</th><th>Name</th><th>Role</th><th>Check In</th><th>Check Out</th><th>Duration</th><th>Status</th></tr></thead>
+        <tbody>${recs.map(r => { const p = getStaff(r.staffId);
+          return `<tr><td>${fmtDate(r.checkIn)}</td><td><strong>${esc(p?.name ?? 'Unknown')}</strong></td><td>${esc(p?.role || '—')}</td>
+          <td>${fmtTime(r.checkIn)}</td><td>${fmtTime(r.checkOut)}</td><td>${fmtDuration(r.checkIn, r.checkOut)}</td>
+          <td><span class="status-badge ${r.checkOut ? 'out' : 'in'}"><span class="status-dot"></span>${r.checkOut ? 'Completed' : 'Active'}</span></td></tr>`;
+        }).join('')}</tbody></table></div>`
+        : `<div class="empty-state"><div class="icon">📅</div><p>No attendance records for the selected filters.</p></div>`;
+
+      return `<div class="card"><h2 class="card-title">Attendance Records <button class="btn btn-ghost btn-sm" id="exportCsv" ${recs.length ? '' : 'disabled'}>Export CSV</button></h2>
+        <p class="card-hint">CSV export shows one row per staff per day: first check-in, last check-out, and total time in company.</p>
+        <div class="filters">
+          <div class="form-group"><label>Date</label><input type="date" id="filterDate" value="${filters.date}" /></div>
+          <div class="form-group"><label>Staff Member</label><select id="filterStaff"><option value="all">All Staff</option>${state.staff.map(s => `<option value="${s.id}" ${filters.staff === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
+          <button class="btn btn-ghost btn-sm" id="clearFilters" style="margin-bottom:.125rem">Clear Filters</button>
+        </div>${table}</div>`;
+    }
+
+    function renderSettings() {
+      return `<div class="card"><h2 class="card-title">Settings</h2>
+        <div class="settings-section">
+          <h3 class="settings-label">Data Summary</h3>
+          <p class="settings-meta">${state.staff.length} staff member${state.staff.length !== 1 ? 's' : ''} · ${state.records.length} attendance record${state.records.length !== 1 ? 's' : ''}</p>
+        </div>
+        <div class="settings-section danger-zone">
+          <h3 class="settings-label">Clear All Data</h3>
+          <p class="settings-meta">Remove all staff and attendance records from this browser. Export a CSV from Records first if you need a backup.</p>
+          <button class="btn btn-danger" id="clearAllData">Clear All Data</button>
+        </div></div>`;
+    }
+
+    function renderLateModal() {
+      if (!lateModal) { document.getElementById('modalRoot').innerHTML = ''; return; }
+      const { person, type } = lateModal;
+      const active = type === 'out' ? activeRecord(person.id) : null;
+      const title = type === 'in' ? `Late Check-In — ${person.name}` : `Late Check-Out — ${person.name}`;
+      document.getElementById('modalRoot').innerHTML = `
+        <div class="modal-overlay" id="modalOverlay">
+          <div class="modal" onclick="event.stopPropagation()">
+            <h3 class="modal-title">${esc(title)}</h3>
+            <p class="modal-desc">${type === 'in' ? 'Choose the date and time this staff member actually arrived.' : 'Choose the date and time this staff member actually left.'}</p>
+            ${active ? `<p class="modal-note">Checked in at: ${fmtTime(active.checkIn)}</p>` : ''}
+            <div class="form-grid">
+              <div class="form-group"><label>Date</label><input type="date" id="lateDate" value="${todayISO()}" /></div>
+              <div class="form-group"><label>Time</label><input type="time" id="lateTime" value="${nowTimeInput()}" /></div>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="saveLate">Save ${type === 'in' ? 'Check-In' : 'Check-Out'}</button>
+              <button class="btn btn-ghost" id="cancelLate">Cancel</button>
+            </div>
+          </div>
+        </div>`;
+      document.getElementById('modalOverlay').onclick = () => { lateModal = null; renderLateModal(); };
+      document.getElementById('cancelLate').onclick = () => { lateModal = null; renderLateModal(); };
+      document.getElementById('saveLate').onclick = () => {
+        const date = document.getElementById('lateDate').value;
+        const time = document.getElementById('lateTime').value;
+        if (!date || !time) return showToast('Date and time are required', 'error');
+        const at = toISOFromLocal(date, time);
+        if (type === 'in') checkIn(person.id, at); else checkOut(person.id, at);
+        lateModal = null; renderLateModal();
+      };
+    }
+
+    function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+    function bindEvents() {
+      document.querySelectorAll('[data-in]').forEach(b => b.onclick = () => checkIn(b.dataset.in));
+      document.querySelectorAll('[data-out]').forEach(b => b.onclick = () => checkOut(b.dataset.out));
+      document.querySelectorAll('[data-late-in]').forEach(b => b.onclick = () => {
+        lateModal = { person: getStaff(b.dataset.lateIn), type: 'in' }; renderLateModal();
+      });
+      document.querySelectorAll('[data-late-out]').forEach(b => b.onclick = () => {
+        lateModal = { person: getStaff(b.dataset.lateOut), type: 'out' }; renderLateModal();
+      });
+      document.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
+        const p = getStaff(b.dataset.edit);
+        staffForm = { editing: p.id, visible: true, name: p.name, role: p.role, employeeId: p.employeeId };
+        render();
+      });
+      document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteStaff(b.dataset.del));
+      const sf = document.getElementById('showStaffForm');
+      if (sf) sf.onclick = () => { staffForm.visible = true; render(); };
+      const cf = document.getElementById('cancelStaff');
+      if (cf) cf.onclick = () => { staffForm = { editing: null, visible: false, name: '', role: '', employeeId: '' }; render(); };
+      const form = document.getElementById('staffForm');
+      if (form) form.onsubmit = e => {
+        e.preventDefault();
+        staffForm.name = form.name.value; staffForm.role = form.role.value; staffForm.employeeId = form.employeeId.value;
+        addStaff();
+      };
+      const fd = document.getElementById('filterDate');
+      if (fd) fd.onchange = () => { filters.date = fd.value; render(); };
+      const fs = document.getElementById('filterStaff');
+      if (fs) fs.onchange = () => { filters.staff = fs.value; render(); };
+      const cl = document.getElementById('clearFilters');
+      if (cl) cl.onclick = () => { filters = { date: todayISO(), staff: 'all' }; render(); };
+      const ex = document.getElementById('exportCsv');
+      if (ex) ex.onclick = exportCSV;
+      const ca = document.getElementById('clearAllData');
+      if (ca) ca.onclick = clearAllData;
+    }
+
+    function render() {
+      renderTabs();
+      const map = { dashboard: renderDashboard, attendance: renderAttendance, staff: renderStaff, records: renderRecords, settings: renderSettings };
+      document.getElementById('content').innerHTML = map[activeTab]();
+      bindEvents();
+    }
+
+    setInterval(() => {
+      document.getElementById('liveTime').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      document.getElementById('liveDate').textContent = new Date().toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    }, 1000);
+
+    render();
+  </script>
+</body>
+</html>
