@@ -9,13 +9,14 @@ export function useAttendance() {
     saveData(data)
   }, [data])
 
-  const addStaff = useCallback(({ name, role, employeeId, hourlyRate }) => {
+  const addStaff = useCallback(({ name, role, employeeId, salaryBasis, payRate, hourlyRate }) => {
     const staff = {
       id: generateId(),
       name: name.trim(),
       role: role.trim(),
       employeeId: employeeId.trim(),
-      hourlyRate: parseFloat(hourlyRate) || 0,
+      salaryBasis: salaryBasis || 'hourly',
+      payRate: payRate !== undefined ? (parseFloat(payRate) || 0) : (parseFloat(hourlyRate) || 0),
       advances: [],
       salaryPayments: [],
       createdAt: new Date().toISOString(),
@@ -35,7 +36,13 @@ export function useAttendance() {
               name: updates.name?.trim() ?? s.name,
               role: updates.role?.trim() ?? s.role,
               employeeId: updates.employeeId?.trim() ?? s.employeeId,
-              hourlyRate: updates.hourlyRate !== undefined ? parseFloat(updates.hourlyRate) || 0 : s.hourlyRate,
+              salaryBasis: updates.salaryBasis ?? s.salaryBasis ?? 'hourly',
+              payRate: updates.payRate !== undefined 
+                ? (parseFloat(updates.payRate) || 0) 
+                : (updates.hourlyRate !== undefined 
+                    ? (parseFloat(updates.hourlyRate) || 0) 
+                    : (s.payRate !== undefined ? s.payRate : (s.hourlyRate || 0))
+                  ),
             }
           : s
       ),
