@@ -4,6 +4,7 @@ import Header from './components/Header'
 import Dashboard from './components/Dashboard'
 import CheckInPanel from './components/CheckInPanel'
 import StaffList from './components/StaffList'
+import Payroll from './components/Payroll'
 import AttendanceLog from './components/AttendanceLog'
 import Settings from './components/Settings'
 
@@ -11,6 +12,7 @@ const TABS = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'attendance', label: 'Check In/Out' },
   { id: 'staff', label: 'Staff' },
+  { id: 'payroll', label: 'Payroll' },
   { id: 'records', label: 'Records' },
   { id: 'settings', label: 'Settings' },
 ]
@@ -85,6 +87,18 @@ export default function App() {
           addStaff={attendance.addStaff}
           updateStaff={attendance.updateStaff}
           deleteStaff={attendance.deleteStaff}
+          showToast={showToast}
+        />
+      )}
+
+      {tab === 'payroll' && (
+        <Payroll
+          staff={attendance.staff}
+          records={attendance.records}
+          addAdvance={attendance.addAdvance}
+          deleteAdvance={attendance.deleteAdvance}
+          processSalary={attendance.processSalary}
+          revertSalaryPayment={attendance.revertSalaryPayment}
           showToast={showToast}
         />
       )}

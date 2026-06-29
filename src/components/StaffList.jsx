@@ -3,10 +3,10 @@ import { useState } from 'react'
 export default function StaffList({ staff, addStaff, updateStaff, deleteStaff, showToast }) {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', role: '', employeeId: '' })
+  const [form, setForm] = useState({ name: '', role: '', employeeId: '', hourlyRate: '' })
 
   const resetForm = () => {
-    setForm({ name: '', role: '', employeeId: '' })
+    setForm({ name: '', role: '', employeeId: '', hourlyRate: '' })
     setEditing(null)
     setShowForm(false)
   }
@@ -30,7 +30,12 @@ export default function StaffList({ staff, addStaff, updateStaff, deleteStaff, s
 
   const startEdit = (person) => {
     setEditing(person.id)
-    setForm({ name: person.name, role: person.role, employeeId: person.employeeId })
+    setForm({
+      name: person.name,
+      role: person.role,
+      employeeId: person.employeeId,
+      hourlyRate: person.hourlyRate !== undefined ? person.hourlyRate : '',
+    })
     setShowForm(true)
   }
 
@@ -84,6 +89,18 @@ export default function StaffList({ staff, addStaff, updateStaff, deleteStaff, s
                   placeholder="EMP-001"
                 />
               </div>
+              <div className="form-group">
+                <label htmlFor="hourlyRate">Hourly Rate ($)</label>
+                <input
+                  id="hourlyRate"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={form.hourlyRate}
+                  onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })}
+                  placeholder="0.00"
+                />
+              </div>
             </div>
             <div className="form-actions">
               <button type="submit" className="btn btn-primary">
@@ -113,6 +130,7 @@ export default function StaffList({ staff, addStaff, updateStaff, deleteStaff, s
                   <th>Name</th>
                   <th>Role</th>
                   <th>Employee ID</th>
+                  <th>Hourly Rate</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -122,6 +140,7 @@ export default function StaffList({ staff, addStaff, updateStaff, deleteStaff, s
                     <td><strong>{person.name}</strong></td>
                     <td>{person.role || '—'}</td>
                     <td>{person.employeeId || '—'}</td>
+                    <td>${parseFloat(person.hourlyRate || 0).toFixed(2)}/hr</td>
                     <td>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button className="btn btn-ghost btn-sm" onClick={() => startEdit(person)}>

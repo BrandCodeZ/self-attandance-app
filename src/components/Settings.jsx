@@ -1,8 +1,15 @@
 export default function Settings({ staffCount, recordCount, clearAllData, showToast }) {
   const handleClear = () => {
-    const message = `Delete all ${staffCount} staff and ${recordCount} attendance records? This cannot be undone.`
-    if (!window.confirm(message)) return
-    if (!window.confirm('Are you sure? Export a CSV backup first if you need your data.')) return
+    const code = Math.random().toString(36).substring(2, 6).toUpperCase()
+    const promptMessage = `WARNING: This will permanently delete all ${staffCount} staff and ${recordCount} attendance records.\nThis action cannot be undone.\n\nTo confirm, please type the security code "${code}" below:`
+
+    const userInput = window.prompt(promptMessage)
+    if (userInput === null) return
+    if (userInput.trim() !== code) {
+      showToast('Incorrect security code. Deletion cancelled.', 'error')
+      return
+    }
+
     clearAllData()
     showToast('All data cleared', 'success')
   }

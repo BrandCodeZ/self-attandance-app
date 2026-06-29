@@ -120,9 +120,11 @@
     const STORAGE_KEY = 'staff-attendance-data';
     let state = loadData();
     let activeTab = 'dashboard';
-    let staffForm = { editing: null, visible: false, name: '', role: '', employeeId: '' };
+    let staffForm = { editing: null, visible: false, name: '', role: '', employeeId: '', hourlyRate: '' };
     let filters = { date: todayISO(), staff: 'all' };
     let lateModal = null;
+    let selectedPayrollMonth = todayISO().slice(0, 7);
+    let advanceFormState = { staffId: '', amount: '', date: todayISO(), description: '' };
 
     function loadData() {
       try {
@@ -186,24 +188,44 @@
       showToast(`${getStaff(staffId).name} ${at ? 'late check-out recorded' : 'checked out'}`);
     }
     function clearAllData() {
-      const msg = `Delete all ${state.staff.length} staff and ${state.records.length} attendance records? This cannot be undone.`;
-      if (!confirm(msg)) return;
-      if (!confirm('Are you sure? Export a CSV backup first if you need your data.')) return;
+      const code = Math.random().toString(36).substring(2, 6).toUpperCase();
+      const promptMessage = `WARNING: This will permanently delete all ${state.staff.length} staff and ${state.records.length} attendance records.\nThis action cannot be undone.\n\nTo confirm, please type the security code "${code}" below:`;
+      const userInput = prompt(promptMessage);
+      if (userInput === null) return;
+      if (userInput.trim() !== code) {
+        showToast('Incorrect security code. Deletion cancelled.', 'error');
+        return;
+      }
       state = { staff: [], records: [] };
       saveData(); render();
       showToast('All data cleared');
     }
     function addStaff() {
       if (!staffForm.name.trim()) return showToast('Name is required', 'error');
+      const rate = parseFloat(staffForm.hourlyRate) || 0;
       if (staffForm.editing) {
         const s = getStaff(staffForm.editing);
-        Object.assign(s, { name: staffForm.name.trim(), role: staffForm.role.trim(), employeeId: staffForm.employeeId.trim() });
+        Object.assign(s, { 
+          name: staffForm.name.trim(), 
+          role: staffForm.role.trim(), 
+          employeeId: staffForm.employeeId.trim(),
+          hourlyRate: rate
+        });
         showToast('Staff updated');
       } else {
-        state.staff.push({ id: uid(), name: staffForm.name.trim(), role: staffForm.role.trim(), employeeId: staffForm.employeeId.trim(), createdAt: new Date().toISOString() });
+        state.staff.push({ 
+          id: uid(), 
+          name: staffForm.name.trim(), 
+          role: staffForm.role.trim(), 
+          employeeId: staffForm.employeeId.trim(), 
+          hourlyRate: rate,
+          advances: [],
+          salaryPayments: [],
+          createdAt: new Date().toISOString() 
+        });
         showToast('Staff added');
       }
-      staffForm = { editing: null, visible: false, name: '', role: '', employeeId: '' };
+      staffForm = { editing: null, visible: false, name: '', role: '', employeeId: '', hourlyRate: '' };
       saveData(); render();
     }
     function deleteStaff(id) {
@@ -212,6 +234,98 @@
       state.staff = state.staff.filter(x => x.id !== id);
       saveData(); render();
       showToast('Staff removed');
+    }
+    function addAdvance(staffId, amount, date, description) {
+      const s = getStaff(staffId);
+      if (!s) return;
+      if (!s.advances) s.advances = [];
+      const advance = {
+        id: uid(),
+        amount: parseFloat(amount) || 0,
+        remaining: parseFloat(amount) || 0,
+        date: date || todayISO(),
+        description: description?.trim() || '',
+        status: 'pending'
+      };
+      s.advances.push(advance);
+      saveData(); render();
+      showToast(`Advance of $${advance.amount.toFixed(2)} recorded`);
+    }
+    function deleteAdvance(staffId, advanceId) {
+      const s = getStaff(staffId);
+      if (!s) return;
+      s.advances = (s.advances || []).filter(a => a.id !== advanceId);
+      saveData(); render();
+      showToast('Advance payment deleted');
+    }
+    function processSalary(staffId, month, details) {
+      const s = getStaff(staffId);
+      if (!s) return;
+      if (!s.salaryPayments) s.salaryPayments = [];
+      const payment = {
+        id: uid(),
+        month,
+        workingHours: details.workingHours,
+        hourlyRate: details.hourlyRate,
+        baseSalary: details.baseSalary,
+        advanceDeducted: details.advanceDeducted,
+        netPayout: details.netPayout,
+        dateProcessed: new Date().toISOString()
+      };
+      let remainingToDeduct = details.advanceDeducted;
+      s.advances = (s.advances || []).map(adv => {
+        if (remainingToDeduct <= 0 || adv.status === 'deducted') return adv;
+        const deductFromThis = Math.min(adv.remaining, remainingToDeduct);
+        const newRemaining = adv.remaining - deductFromThis;
+        remainingToDeduct -= deductFromThis;
+        return {
+          ...adv,
+          remaining: newRemaining,
+          status: newRemaining <= 0 ? 'deducted' : 'partially_deducted'
+        };
+      });
+      s.salaryPayments.push(payment);
+      saveData(); render();
+      showToast(`Salary for ${s.name} processed`);
+    }
+    function revertSalaryPayment(staffId, paymentId) {
+      const s = getStaff(staffId);
+      if (!s) return;
+      const payment = (s.salaryPayments || []).find(p => p.id === paymentId);
+      if (!payment) return;
+      let amountToRestore = payment.advanceDeducted;
+      s.advances = (s.advances || []).reverse().map(adv => {
+        if (amountToRestore <= 0) return adv;
+        const maxRestore = adv.amount - adv.remaining;
+        if (maxRestore <= 0) return adv;
+        const restoreAmount = Math.min(maxRestore, amountToRestore);
+        const newRemaining = adv.remaining + restoreAmount;
+        amountToRestore -= restoreAmount;
+        return {
+          ...adv,
+          remaining: newRemaining,
+          status: newRemaining === adv.amount ? 'pending' : 'partially_deducted'
+        };
+      }).reverse();
+      s.salaryPayments = (s.salaryPayments || []).filter(p => p.id !== paymentId);
+      saveData(); render();
+      showToast(`Salary payout reverted for ${s.name}`);
+    }
+    function getWorkingHoursForMonth(staffId, monthStr) {
+      const staffRecords = state.records.filter(r => r.staffId === staffId && r.checkIn && r.checkOut && r.checkIn.slice(0, 7) === monthStr);
+      let totalMs = 0;
+      for (const r of staffRecords) {
+        const diff = new Date(r.checkOut) - new Date(r.checkIn);
+        if (diff > 0) totalMs += diff;
+      }
+      return totalMs / 3600000;
+    }
+    function getAvailableAdvances(person, monthStr) {
+      if (!person.advances) return 0;
+      const endOfMonth = `${monthStr}-31`;
+      return person.advances
+        .filter(adv => adv.date <= endOfMonth && adv.status !== 'deducted')
+        .reduce((sum, adv) => sum + (adv.remaining || 0), 0);
     }
     function localDateKey(iso) {
       const d = new Date(iso);
@@ -267,6 +381,7 @@
       { id: 'dashboard', label: 'Dashboard' },
       { id: 'attendance', label: 'Check In/Out' },
       { id: 'staff', label: 'Staff' },
+      { id: 'payroll', label: 'Payroll' },
       { id: 'records', label: 'Records' },
       { id: 'settings', label: 'Settings' },
     ];
@@ -320,6 +435,7 @@
             <div class="form-group"><label>Full Name *</label><input name="name" value="${esc(staffForm.name)}" placeholder="John Smith" required /></div>
             <div class="form-group"><label>Role / Department</label><input name="role" value="${esc(staffForm.role)}" placeholder="Sales, HR, etc." /></div>
             <div class="form-group"><label>Employee ID</label><input name="employeeId" value="${esc(staffForm.employeeId)}" placeholder="EMP-001" /></div>
+            <div class="form-group"><label>Hourly Rate ($)</label><input type="number" step="0.01" min="0" name="hourlyRate" value="${esc(staffForm.hourlyRate || '')}" placeholder="0.00" /></div>
           </div>
           <div class="form-actions">
             <button type="submit" class="btn btn-primary">${staffForm.editing ? 'Save Changes' : 'Add Staff'}</button>
@@ -328,14 +444,178 @@
         </form>` : '';
 
       const list = state.staff.length ? `<div class="card"><div class="table-wrap"><table>
-        <thead><tr><th>Name</th><th>Role</th><th>Employee ID</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Name</th><th>Role</th><th>Employee ID</th><th>Hourly Rate</th><th>Actions</th></tr></thead>
         <tbody>${state.staff.map(p => `<tr>
-          <td><strong>${esc(p.name)}</strong></td><td>${esc(p.role || '—')}</td><td>${esc(p.employeeId || '—')}</td>
+          <td><strong>${esc(p.name)}</strong></td><td>${esc(p.role || '—')}</td><td>${esc(p.employeeId || '—')}</td><td>$${parseFloat(p.hourlyRate || 0).toFixed(2)}/hr</td>
           <td><button class="btn btn-ghost btn-sm" data-edit="${p.id}">Edit</button> <button class="btn btn-danger btn-sm" data-del="${p.id}">Remove</button></td>
         </tr>`).join('')}</tbody></table></div></div>`
         : `<div class="card"><div class="empty-state"><div class="icon">👤</div><p>No staff members yet.</p></div></div>`;
 
       return `<div class="card"><h2 class="card-title">Staff Members ${!staffForm.visible ? '<button class="btn btn-primary btn-sm" id="showStaffForm">+ Add Staff</button>' : ''}</h2>${form}</div>${list}`;
+    }
+
+    function renderPayroll() {
+      // Monthly payroll calculations
+      const payrollRows = state.staff.map(person => {
+        const payment = (person.salaryPayments || []).find(p => p.month === selectedPayrollMonth);
+        if (payment) {
+          return {
+            person,
+            isProcessed: true,
+            paymentId: payment.id,
+            workingHours: payment.workingHours,
+            hourlyRate: payment.hourlyRate,
+            baseSalary: payment.baseSalary,
+            advanceDeducted: payment.advanceDeducted,
+            netPayout: payment.netPayout
+          };
+        }
+        const workingHours = getWorkingHoursForMonth(person.id, selectedPayrollMonth);
+        const hourlyRate = person.hourlyRate || 0;
+        const baseSalary = workingHours * hourlyRate;
+        const availableAdvances = getAvailableAdvances(person, selectedPayrollMonth);
+        const advanceDeducted = Math.min(baseSalary, availableAdvances);
+        const netPayout = baseSalary - advanceDeducted;
+        return {
+          person,
+          isProcessed: false,
+          workingHours,
+          hourlyRate,
+          baseSalary,
+          advanceDeducted,
+          netPayout
+        };
+      });
+
+      const allAdvancesList = [];
+      state.staff.forEach(p => {
+        (p.advances || []).forEach(adv => {
+          allAdvancesList.push({ ...adv, staffName: p.name, staffId: p.id });
+        });
+      });
+      allAdvancesList.sort((a,b) => b.date.localeCompare(a.date));
+
+      const table = payrollRows.length ? `
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Staff Member</th>
+                <th>Hourly Rate</th>
+                <th>Hours Worked</th>
+                <th>Base Salary</th>
+                <th>Advances Deducted</th>
+                <th>Net Payout</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${payrollRows.map(row => {
+                const status = row.isProcessed ? '<span class="status-badge in"><span class="status-dot"></span>Processed</span>' : '<span class="status-badge out"><span class="status-dot"></span>Unprocessed</span>';
+                const actions = row.isProcessed 
+                  ? `<button class="btn btn-danger btn-sm" data-revert-salary="${row.person.id}" data-payment-id="${row.paymentId}">Revert</button>`
+                  : `<button class="btn btn-success btn-sm" data-pay-salary="${row.person.id}" ${row.workingHours === 0 && row.advanceDeducted === 0 ? 'disabled' : ''}>Pay &amp; Process</button>`;
+                return `<tr>
+                  <td><strong>${esc(row.person.name)}</strong><br/><small style="color:var(--text-muted)">${esc(row.person.role || 'No Role')}</small></td>
+                  <td>$${parseFloat(row.hourlyRate).toFixed(2)}/hr</td>
+                  <td>${row.workingHours.toFixed(2)} hrs</td>
+                  <td>$${row.baseSalary.toFixed(2)}</td>
+                  <td style="color:${row.advanceDeducted > 0 ? 'var(--warning)' : 'inherit'}">${row.advanceDeducted > 0 ? `-$${row.advanceDeducted.toFixed(2)}` : '$0.00'}</td>
+                  <td style="font-weight:600;color:var(--success)">$${row.netPayout.toFixed(2)}</td>
+                  <td>${status}</td>
+                  <td>${actions}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`
+        : `<div class="empty-state"><div class="icon">💳</div><p>No staff members available. Go to the Staff tab to add your team.</p></div>`;
+
+      const advancesTable = allAdvancesList.length ? `
+        <div class="table-wrap" style="max-height: 350px; overflow-y: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Staff / Date</th>
+                <th>Amount</th>
+                <th>Remaining</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${allAdvancesList.map(adv => {
+                const statusBadgeClass = adv.status === 'deducted' ? 'out' : adv.status === 'partially_deducted' ? 'warning' : 'in';
+                const statusLabel = adv.status === 'deducted' ? 'Deducted' : adv.status === 'partially_deducted' ? 'Partial' : 'Pending';
+                const action = adv.status === 'pending'
+                  ? `<button class="btn btn-danger btn-sm" data-del-advance="${adv.id}" data-staff-id="${adv.staffId}">Delete</button>`
+                  : `<span style="font-size:0.75rem;color:var(--text-muted)">Locked</span>`;
+                return `<tr>
+                  <td><strong>${esc(adv.staffName)}</strong><br/><small style="color:var(--text-muted)">${adv.date} ${adv.description ? '· ' + esc(adv.description) : ''}</small></td>
+                  <td>$${adv.amount.toFixed(2)}</td>
+                  <td style="color:${adv.remaining > 0 ? 'var(--warning)' : 'inherit'}">$${adv.remaining.toFixed(2)}</td>
+                  <td><span class="status-badge ${statusBadgeClass}"><span class="status-dot"></span>${statusLabel}</span></td>
+                  <td>${action}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`
+        : `<div class="empty-state"><div class="icon">💵</div><p>No advance payments recorded yet.</p></div>`;
+
+      return `
+        <div style="display:flex;flex-direction:column;gap:1.5rem">
+          <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;margin-bottom:1rem">
+              <h2 class="card-title" style="margin-bottom:0">Monthly Payroll Calculator</h2>
+              <div class="form-group" style="width:auto;min-width:180px">
+                <input type="month" id="payrollMonth" value="${selectedPayrollMonth}" />
+              </div>
+            </div>
+            <p class="card-hint">Calculate salaries based on working hours in the selected month and automatically deduct any prepayment/advance balances.</p>
+            ${table}
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:1.5rem">
+            <div class="card">
+              <h2 class="card-title">Record Advance Payment (Prepayment)</h2>
+              <p class="card-hint">Record advances paid to staff. These amounts will be deducted from their payroll salary in subsequent months.</p>
+              <form id="advanceForm">
+                <div style="display:flex;flex-direction:column;gap:1rem">
+                  <div class="form-group">
+                    <label>Staff Member *</label>
+                    <select name="staffId" required>
+                      <option value="">Select Staff...</option>
+                      ${state.staff.map(s => `<option value="${s.id}" ${advanceFormState.staffId === s.id ? 'selected' : ''}>${esc(s.name)} (${esc(s.role || 'No Role')})</option>`).join('')}
+                    </select>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                    <div class="form-group">
+                      <label>Amount ($) *</label>
+                      <input type="number" step="0.01" min="0.01" name="amount" value="${esc(advanceFormState.amount)}" placeholder="0.00" required />
+                   </div>
+                    <div class="form-group">
+                      <label>Date Paid *</label>
+                      <input type="date" name="date" value="${esc(advanceFormState.date)}" required />
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Description / Purpose</label>
+                    <input type="text" name="description" value="${esc(advanceFormState.description)}" placeholder="e.g. Pre-month house rent advance" />
+                  </div>
+                  <button type="submit" class="btn btn-primary" style="margin-top:0.5rem">Record Prepayment / Advance</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="card">
+              <h2 class="card-title">Advances Ledger</h2>
+              <p class="card-hint">History of advance payments recorded. Remaining balances are deducted during payroll runs.</p>
+              ${advancesTable}
+            </div>
+          </div>
+        </div>`;
     }
 
     function renderRecords() {
@@ -417,18 +697,18 @@
       });
       document.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => {
         const p = getStaff(b.dataset.edit);
-        staffForm = { editing: p.id, visible: true, name: p.name, role: p.role, employeeId: p.employeeId };
+        staffForm = { editing: p.id, visible: true, name: p.name, role: p.role, employeeId: p.employeeId, hourlyRate: p.hourlyRate !== undefined ? p.hourlyRate : '' };
         render();
       });
       document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => deleteStaff(b.dataset.del));
       const sf = document.getElementById('showStaffForm');
       if (sf) sf.onclick = () => { staffForm.visible = true; render(); };
       const cf = document.getElementById('cancelStaff');
-      if (cf) cf.onclick = () => { staffForm = { editing: null, visible: false, name: '', role: '', employeeId: '' }; render(); };
+      if (cf) cf.onclick = () => { staffForm = { editing: null, visible: false, name: '', role: '', employeeId: '', hourlyRate: '' }; render(); };
       const form = document.getElementById('staffForm');
       if (form) form.onsubmit = e => {
         e.preventDefault();
-        staffForm.name = form.name.value; staffForm.role = form.role.value; staffForm.employeeId = form.employeeId.value;
+        staffForm.name = form.name.value; staffForm.role = form.role.value; staffForm.employeeId = form.employeeId.value; staffForm.hourlyRate = form.hourlyRate.value;
         addStaff();
       };
       const fd = document.getElementById('filterDate');
@@ -441,11 +721,74 @@
       if (ex) ex.onclick = exportCSV;
       const ca = document.getElementById('clearAllData');
       if (ca) ca.onclick = clearAllData;
+
+      // Payroll selectors & actions
+      const pm = document.getElementById('payrollMonth');
+      if (pm) pm.onchange = () => { selectedPayrollMonth = pm.value; render(); };
+
+      const advForm = document.getElementById('advanceForm');
+      if (advForm) {
+        advForm.onsubmit = e => {
+          e.preventDefault();
+          const staffId = advForm.staffId.value;
+          const amount = advForm.amount.value;
+          const date = advForm.date.value;
+          const description = advForm.description.value;
+          const parsedAmount = parseFloat(amount);
+          if (!staffId) return showToast('Please select a staff member', 'error');
+          if (isNaN(parsedAmount) || parsedAmount <= 0) return showToast('Enter a valid amount', 'error');
+          if (!date) return showToast('Enter a date', 'error');
+          addAdvance(staffId, parsedAmount, date, description);
+          advanceFormState = { staffId: '', amount: '', date: todayISO(), description: '' };
+          render();
+        };
+      }
+
+      document.querySelectorAll('[data-pay-salary]').forEach(b => b.onclick = () => {
+        const staffId = b.getAttribute('data-pay-salary');
+        const p = getStaff(staffId);
+        if (!p) return;
+        const workingHours = getWorkingHoursForMonth(p.id, selectedPayrollMonth);
+        const hourlyRate = p.hourlyRate || 0;
+        const baseSalary = workingHours * hourlyRate;
+        const availableAdvances = getAvailableAdvances(p, selectedPayrollMonth);
+        const advanceDeducted = Math.min(baseSalary, availableAdvances);
+        const netPayout = baseSalary - advanceDeducted;
+        const confirmMsg = `Process salary for ${p.name} for ${selectedPayrollMonth}?\n\n` +
+          `- Working Hours: ${workingHours.toFixed(2)} hrs\n` +
+          `- Hourly Rate: $${hourlyRate.toFixed(2)}/hr\n` +
+          `- Base Salary: $${baseSalary.toFixed(2)}\n` +
+          `- Advances Deducted: -$${advanceDeducted.toFixed(2)}\n` +
+          `- Net Payout: $${netPayout.toFixed(2)}`;
+        if (!confirm(confirmMsg)) return;
+        processSalary(p.id, selectedPayrollMonth, { workingHours, hourlyRate, baseSalary, advanceDeducted, netPayout });
+      });
+
+      document.querySelectorAll('[data-revert-salary]').forEach(b => b.onclick = () => {
+        const staffId = b.getAttribute('data-revert-salary');
+        const paymentId = b.getAttribute('data-payment-id');
+        const p = getStaff(staffId);
+        if (!p) return;
+        const confirmMsg = `Revert payroll calculation for ${p.name} for ${selectedPayrollMonth}?\nThis will restore the deducted advances.`;
+        if (!confirm(confirmMsg)) return;
+        revertSalaryPayment(staffId, paymentId);
+      });
+
+      document.querySelectorAll('[data-del-advance]').forEach(b => b.onclick = () => {
+        const advanceId = b.getAttribute('data-del-advance');
+        const staffId = b.getAttribute('data-staff-id');
+        const s = getStaff(staffId);
+        const adv = (s?.advances || []).find(a => a.id === advanceId);
+        if (!adv) return;
+        const confirmMsg = `Delete advance payment of $${adv.amount.toFixed(2)} for ${s.name}?`;
+        if (!confirm(confirmMsg)) return;
+        deleteAdvance(staffId, advanceId);
+      });
     }
 
     function render() {
       renderTabs();
-      const map = { dashboard: renderDashboard, attendance: renderAttendance, staff: renderStaff, records: renderRecords, settings: renderSettings };
+      const map = { dashboard: renderDashboard, attendance: renderAttendance, staff: renderStaff, payroll: renderPayroll, records: renderRecords, settings: renderSettings };
       document.getElementById('content').innerHTML = map[activeTab]();
       bindEvents();
     }
